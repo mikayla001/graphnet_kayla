@@ -36,7 +36,7 @@ class EasySyntax(Model):
         scheduler_class: Optional[type] = None,
         scheduler_kwargs: Optional[Dict] = None,
         scheduler_config: Optional[Dict] = None,
-        log_train_loss_on_step: bool = False,
+    also_log_train_loss_per_step: bool = False,
     ) -> None:
         """Construct `StandardModel`."""
         # Base class constructor
@@ -53,7 +53,7 @@ class EasySyntax(Model):
         self._scheduler_class = scheduler_class
         self._scheduler_kwargs = scheduler_kwargs or dict()
         self._scheduler_config = scheduler_config or dict()
-        self._log_train_loss_on_step = log_train_loss_on_step
+    self._also_log_train_loss_per_step = also_log_train_loss_per_step
 
         self.validate_tasks()
 
@@ -255,7 +255,7 @@ class EasySyntax(Model):
             on_step=False,
             sync_dist=True,
         )
-        if self._log_train_loss_on_step:
+if self._also_log_train_loss_on_step:
             self.log(
                 "train_loss_step",
                 loss,
@@ -263,7 +263,7 @@ class EasySyntax(Model):
                 prog_bar=False,
                 on_epoch=False,
                 on_step=True,
-                sync_dist=True,
+                sync_dist=False,
             )
 
         current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
