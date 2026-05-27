@@ -36,9 +36,23 @@ class EasySyntax(Model):
         scheduler_class: Optional[type] = None,
         scheduler_kwargs: Optional[Dict] = None,
         scheduler_config: Optional[Dict] = None,
-    also_log_train_loss_per_step: bool = False,
+        also_log_train_loss_per_step: bool = False,
     ) -> None:
-        """Construct `StandardModel`."""
+        """Construct `StandardModel`.
+
+        Args:
+            tasks: Task(s) appended as the head(s) of the model, defining
+                the prediction target(s) and loss(es).
+            optimizer_class: Optimizer class used during training.
+            optimizer_kwargs: Keyword arguments passed to `optimizer_class`.
+            scheduler_class: Learning-rate scheduler class. If `None`, no
+                scheduler is used.
+            scheduler_kwargs: Keyword arguments passed to `scheduler_class`.
+            scheduler_config: Additional configuration for how the scheduler
+                is invoked by PyTorch Lightning (e.g. `interval`, `frequency`).
+            also_log_train_loss_per_step: If `True`, additionally logs the
+                per-batch training loss under `train_loss_step`.
+        """
         # Base class constructor
         super().__init__(name=__name__, class_name=self.__class__.__name__)
 
@@ -53,7 +67,7 @@ class EasySyntax(Model):
         self._scheduler_class = scheduler_class
         self._scheduler_kwargs = scheduler_kwargs or dict()
         self._scheduler_config = scheduler_config or dict()
-    self._also_log_train_loss_per_step = also_log_train_loss_per_step
+        self._also_log_train_loss_per_step = also_log_train_loss_per_step
 
         self.validate_tasks()
 
@@ -255,7 +269,7 @@ class EasySyntax(Model):
             on_step=False,
             sync_dist=True,
         )
-if self._also_log_train_loss_on_step:
+        if self._also_log_train_loss_per_step:
             self.log(
                 "train_loss_step",
                 loss,
