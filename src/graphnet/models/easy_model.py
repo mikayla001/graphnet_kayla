@@ -36,7 +36,8 @@ class EasySyntax(Model):
         scheduler_class: Optional[type] = None,
         scheduler_kwargs: Optional[Dict] = None,
         scheduler_config: Optional[Dict] = None,
-        also_log_train_loss_per_step: bool = False,
+        log_on_epoch: bool = True,
+        log_on_step: bool = False,
     ) -> None:
         """Construct `StandardModel`.
 
@@ -50,7 +51,8 @@ class EasySyntax(Model):
             scheduler_kwargs: Keyword arguments passed to `scheduler_class`.
             scheduler_config: Additional configuration for how the scheduler
                 is invoked by PyTorch Lightning (e.g. `interval`, `frequency`).
-            also_log_train_loss_per_step: If `True`, additionally logs the
+            log_on_epoch: If `True`, logs the training loss on epoch end.
+            log_on_step: If `True`, logs the training loss on step end.
                 per-batch training loss under `train_loss_step`.
         """
         # Base class constructor
@@ -265,20 +267,10 @@ class EasySyntax(Model):
             loss,
             batch_size=batch_size,
             prog_bar=True,
-            on_epoch=True,
-            on_step=False,
+            on_epoch=self._log_on_epoch,
+            on_step=self._log_on_step,
             sync_dist=True,
         )
-        if self._also_log_train_loss_per_step:
-            self.log(
-                "train_loss_step",
-                loss,
-                batch_size=batch_size,
-                prog_bar=False,
-                on_epoch=False,
-                on_step=True,
-                sync_dist=False,
-            )
 
         current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("lr", current_lr, prog_bar=True, on_step=True)
