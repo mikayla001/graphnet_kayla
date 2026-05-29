@@ -69,7 +69,8 @@ class EasySyntax(Model):
         self._scheduler_class = scheduler_class
         self._scheduler_kwargs = scheduler_kwargs or dict()
         self._scheduler_config = scheduler_config or dict()
-        self._also_log_train_loss_per_step = also_log_train_loss_per_step
+        self._log_on_step = log_on_step
+        self._log_on_epoch = log_on_epoch
 
         self.validate_tasks()
 
@@ -288,8 +289,8 @@ class EasySyntax(Model):
             loss,
             batch_size=self._get_batch_size(val_batch),
             prog_bar=True,
-            on_epoch=True,
-            on_step=False,
+            on_epoch=self._log_on_epoch,
+            on_step=self._log_on_step,
             sync_dist=True,
         )
         return loss
