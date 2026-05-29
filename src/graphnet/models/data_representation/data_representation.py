@@ -202,6 +202,25 @@ class DataRepresentation(Model):
 
         # Add data representation Stamp
         data["data_representation"] = self.__class__.__name__
+
+        # Warn on empty events; the representation will hold no nodes/pulses,
+        # which is rarely what the user intends.
+        if data.x.shape[0] == 0:
+            event_no = getattr(data, "event_no", None)
+            if isinstance(event_no, torch.Tensor):
+                event_no = event_no.tolist()
+            msg = (
+                f"{self.__class__.__name__} received an empty input tensor "
+                f"(no pulses) for event_no={event_no}"
+            )
+            if data_path is not None:
+                msg += f" in dataset '{data_path}'"
+            msg += (
+                ". This event will be turned into an empty data "
+                "representation; check your input data if this is unexpected."
+            )
+            self.warning(msg)
+
         return data
 
     def _resolve_masks(self) -> None:

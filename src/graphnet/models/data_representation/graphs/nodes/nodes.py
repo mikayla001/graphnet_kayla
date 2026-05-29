@@ -43,12 +43,6 @@ class NodeDefinition(Model):  # pylint: disable=too-few-public-methods
         Returns:
             Node feature tensor of shape ´[num_nodes, num_features]´.
         """
-        if x.shape[0] == 0:
-            raise ValueError(
-                f"{self.__class__.__name__} received an empty input tensor "
-                "(no pulses). An empty data object cannot be turned into "
-                "nodes; ensure events are non-empty before node construction."
-            )
         return self._construct_nodes(x=x)
 
     @property
@@ -270,6 +264,14 @@ class NodeAsDOMTimeSeries(NodeDefinition):
 
     def _construct_nodes(self, x: torch.Tensor) -> torch.Tensor:
         """Construct nodes from raw node features ´x´."""
+        if x.shape[0] == 0:
+            n_features = len(self._keys) + (
+                1 if self._charge_index is None else 0
+            )
+            # `new_node_col` appended below for non-empty events
+            n_features += 1
+            return torch.empty((0, n_features), dtype=x.dtype, device=x.device)
+
         # Cast to Numpy
         x = x.numpy()
         # if there is no charge column add a dummy column
