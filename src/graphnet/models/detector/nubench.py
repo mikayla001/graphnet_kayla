@@ -38,7 +38,8 @@ class NuBenchDetector(Detector):
         return x / 10e5
 
     def _charge(self, x: torch.tensor) -> torch.tensor:
-        return torch.log10(1 + x)
+        # catch negative charges arising from input perturbation/noise
+        return torch.log10(1 + torch.clamp(x, min=0.0))
 
 
 class FlowerS(NuBenchDetector):
