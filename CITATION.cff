@@ -50,6 +50,9 @@ authors:
 - family-names: "Eller"
   given-names: "Philipp"
   orcid: "https://orcid.org/0000-0001-6354-5209"
+- family-names: "Magel"
+  given-names: "Severin"
+  orcid: "https://orcid.org/0009-0000-8068-469X"
 version: 1.0.0
 date-released: 2023-05-12
 url: "https://github.com/graphnet-team/graphnet"
