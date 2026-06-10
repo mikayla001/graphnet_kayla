@@ -262,11 +262,10 @@ class EasySyntax(Model):
         if isinstance(train_batch, Data):
             train_batch = [train_batch]
         loss = self.shared_step(train_batch, batch_idx)
-        batch_size = self._get_batch_size(train_batch)
         self.log(
             "train_loss",
             loss,
-            batch_size=batch_size,
+            batch_size=self._get_batch_size(train_batch),
             prog_bar=True,
             on_epoch=self._log_on_epoch,
             on_step=self._log_on_step,
