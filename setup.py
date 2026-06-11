@@ -55,7 +55,7 @@ EXTRAS_REQUIRE = {
     # --- PyTorch 2.5.1 ---
     "torch-25": [
         "torch==2.5.1",
-        "torch-geometric",
+        "torch-geometric<2.8",
         "pyg_lib",
         "torch_scatter",
         "torch_sparse",
@@ -66,7 +66,7 @@ EXTRAS_REQUIRE = {
     # --- PyTorch 2.6.0 ---
     "torch-26": [
         "torch==2.6.0",
-        "torch-geometric",
+        "torch-geometric<2.8",
         "pyg_lib",
         "torch_scatter",
         "torch_sparse",
@@ -77,7 +77,7 @@ EXTRAS_REQUIRE = {
     # --- PyTorch 2.7.0 ---
     "torch-27": [
         "torch==2.7.0",
-        "torch-geometric",
+        "torch-geometric<2.8",
         "pyg_lib",
         "torch_scatter",
         "torch_sparse",
