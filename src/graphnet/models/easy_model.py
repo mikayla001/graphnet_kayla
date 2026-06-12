@@ -36,8 +36,25 @@ class EasySyntax(Model):
         scheduler_class: Optional[type] = None,
         scheduler_kwargs: Optional[Dict] = None,
         scheduler_config: Optional[Dict] = None,
+        log_on_epoch: bool = True,
+        log_on_step: bool = False,
     ) -> None:
-        """Construct `StandardModel`."""
+        """Construct `StandardModel`.
+
+        Args:
+            tasks: Task(s) appended as the head(s) of the model, defining
+                the prediction target(s) and loss(es).
+            optimizer_class: Optimizer class used during training.
+            optimizer_kwargs: Keyword arguments passed to `optimizer_class`.
+            scheduler_class: Learning-rate scheduler class. If `None`, no
+                scheduler is used.
+            scheduler_kwargs: Keyword arguments passed to `scheduler_class`.
+            scheduler_config: Additional configuration for how the scheduler
+                is invoked by PyTorch Lightning (e.g. `interval`, `frequency`).
+            log_on_epoch: If `True`, logs the training loss on epoch end.
+            log_on_step: If `True`, logs the training loss on step end.
+                per-batch training loss under `train_loss_step`.
+        """
         # Base class constructor
         super().__init__(name=__name__, class_name=self.__class__.__name__)
 
@@ -52,6 +69,8 @@ class EasySyntax(Model):
         self._scheduler_class = scheduler_class
         self._scheduler_kwargs = scheduler_kwargs or dict()
         self._scheduler_config = scheduler_config or dict()
+        self._log_on_step = log_on_step
+        self._log_on_epoch = log_on_epoch
 
         self.validate_tasks()
 
@@ -248,8 +267,8 @@ class EasySyntax(Model):
             loss,
             batch_size=self._get_batch_size(train_batch),
             prog_bar=True,
-            on_epoch=True,
-            on_step=False,
+            on_epoch=self._log_on_epoch,
+            on_step=self._log_on_step,
             sync_dist=True,
         )
 
@@ -269,8 +288,8 @@ class EasySyntax(Model):
             loss,
             batch_size=self._get_batch_size(val_batch),
             prog_bar=True,
-            on_epoch=True,
-            on_step=False,
+            on_epoch=self._log_on_epoch,
+            on_step=self._log_on_step,
             sync_dist=True,
         )
         return loss
