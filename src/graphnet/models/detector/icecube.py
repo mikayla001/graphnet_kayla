@@ -39,7 +39,8 @@ class IceCube86(Detector):
         return (x - 1.0e04) / 3.0e4
 
     def _charge(self, x: torch.tensor) -> torch.tensor:
-        return torch.log10(x)
+        # floor charge at 1e-2; perturbation/noise can make it non-positive
+        return torch.log10(torch.clamp(x, min=1e-2))
 
     def _rde(self, x: torch.tensor) -> torch.tensor:
         return (x - 1.25) / 0.25
