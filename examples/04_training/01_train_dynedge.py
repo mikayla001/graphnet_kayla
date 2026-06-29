@@ -12,7 +12,7 @@ from graphnet.data.constants import FEATURES, TRUTH
 from graphnet.models import StandardModel
 from graphnet.models.detector.prometheus import Prometheus
 from graphnet.models.gnn import DynEdge
-from graphnet.models.graphs import KNNGraph
+from graphnet.models.data_representation import KNNGraph
 from graphnet.models.task.reconstruction import EnergyReconstruction
 from graphnet.training.callbacks import PiecewiseLinearLR
 from graphnet.training.loss_functions import LogCoshLoss

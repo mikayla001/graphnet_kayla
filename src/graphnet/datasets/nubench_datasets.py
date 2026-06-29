@@ -24,8 +24,8 @@ FEATURES_NUBENCH = [
     "sensor_pos_x",
     "sensor_pos_y",
     "sensor_pos_z",
-    "charge",
     "t",
+    "charge",
 ]
 
 TRUTH_NUBENCH = [

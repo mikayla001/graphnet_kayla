@@ -25,7 +25,7 @@ class CuratedDataset(GraphNeTDataModule):
 
     Curated Datasets in GraphNeT are pre-converted datasets that have
     been prepared for training and evaluation of deep learning models.
-    On these Datasets, graphnet users can train and benchmark their
+    On these Datasets, GraphNeT users can train and benchmark their
     models against SOTA methods.
     """
 
@@ -325,9 +325,9 @@ class ERDAHostedDataset(CuratedDataset):
             # Download, unzip and delete zipped file
             os.makedirs(self.dataset_dir)
             file_path = os.path.join(self.dataset_dir, file_hash + ".tar.gz")
-            os.system(f"wget -O {file_path} {self._mirror}/{file_hash}")
-            os.system(f"tar -xf {file_path} -C {self.dataset_dir}")
-            os.system(f"rm {file_path}")
+            os.system(f"wget -O '{file_path}' {self._mirror}/{file_hash}")
+            os.system(f"tar -xf '{file_path}' -C {self.dataset_dir}")
+            os.system(f"rm '{file_path}'")
 
 
 class IceCubeHostedDataset(CuratedDataset):
