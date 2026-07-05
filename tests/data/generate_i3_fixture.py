@@ -7,7 +7,7 @@ which ``PropagateMuons`` (PROPOSAL) then propagates into a physically valid
 post-propagation ``I3MCTree`` + ``MMCTrackList``. Every input is public -- the
 GCD is GraphNeT's own committed test GCD and PROPOSAL uses open cross-section
 tables -- so the result carries no IceCube-internal data. The committed fixture
-is what tests read; CI never regenerates it.
+is what tests read.
 
 The RNG is seeded so regeneration is reproducible. Run inside the GraphNeT
 icetray Docker image (icetray + simprod/PROPOSAL):
@@ -39,8 +39,7 @@ from icecube.simprod.segments.PropagateMuons import make_standard_propagators
 # --- Configuration ----------------------------------------------------------
 
 # Test i3 data tree relative to this file (<repo>/tests/data/ ->
-# <repo>/data/tests/i3), so regeneration reads and writes the committed
-# worktree rather than whatever graphnet install happens to be importable.
+# <repo>/data/tests/i3)
 _TEST_I3_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "data", "tests", "i3")
 )
