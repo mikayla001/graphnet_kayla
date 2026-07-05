@@ -108,11 +108,17 @@ Y_NC = 0.25  # fraction of energy to hadrons at the outside NC vertex
 Y_CC = 0.30  # fraction of energy to hadrons at the in-detector CC vertex
 
 # Cosmic-ray muon bundle (CORSIKA-style): only the in-ice muons are seeded, all
-# from one vertex, fanning out. (A real bundle is parallel and spread, but a
-# shared vertex renders more clearly.)
+# sharing the shower direction (a real bundle is collinear) and spread
+# transversely around the shower axis.
 CORSIKA_BUNDLE_ENERGIES = [1500.0, 900.0, 700.0, 600.0, 500.0]  # GeV
-CORSIKA_BUNDLE_OPENING_DEG = 3.0  # half-angle of the bundle fan
+CORSIKA_BUNDLE_RADIUS = 10.0  # transverse spread of the bundle (m)
 CORSIKA_PRIMARY_UPSTREAM = 1000.0  # m
+
+# Coincident-background event: on top of a signal neutrino whose products all
+# stop short of the array, an atmospheric muon from an upstream pi+ decay does
+# cross it, so the only light in the detector comes from the background.
+COINCIDENT_BG_MUON_ENERGY = 1.0e4  # GeV, enough to cross the whole array
+COINCIDENT_BG_PION_UPSTREAM = 200.0  # m, pi+ decay point ahead of the muon
 
 
 @dataclass
@@ -128,9 +134,6 @@ class EdgeCase:
     # Pre-propagation I3MCTree builder; defaults (None) to a single-vertex CC
     # event (neutrino -> charged lepton).
     builder: Optional[Callable[["EdgeCase"], "dataclasses.I3MCTree"]] = None
-    # Nothing reaches the array, so an empty MMCTrackList is the intended
-    # outcome and the validator accepts it.
-    expect_no_track: bool = False
     # First in-ice neutrino sits below the top of the tree; the validator
     # asserts this so get_primaries is forced to recurse.
     top_primary_outside_ice: bool = False
@@ -207,38 +210,53 @@ def build_cc_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
 
 
 def build_nan_primary_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
-    """CC event whose primary neutrino has NaN energy.
+    """CC event whose in-ice primary neutrino has NaN energy.
 
-    The extractor's ``check_primary_energy`` must fall back to the daughters
-    (hadrons + lepton), which carry finite energies.
+    A real NaN-energy primary carries a neutrino daughter with a defined
+    energy, so ``check_primary_energy`` (used by ``I3HighestEParticleExtractor``)
+    falls back from the NaN primary to that daughter. The primary is kept in-ice
+    and at the top of the tree so it is the one ``get_primaries`` selects and the
+    NaN branch is actually taken; the daughter neutrino then CCs inside the array
+    to a real muon track.
     """
     direction = _normalise(case.direction)
-    vertex = np.array(case.position, dtype=float)
-    nu_pos = vertex - direction * NU_DISTANCE
+    cc_vertex = np.array(case.position, dtype=float)
+    nc_vertex = cc_vertex - direction * NC_TO_CC_DISTANCE
+    nu_pos = nc_vertex - direction * NU_DISTANCE
 
-    neutrino = _make_particle(
-        NEUTRINO_FOR[case.particle_type],
-        float("nan"),
-        nu_pos,
-        direction,
-        length=NU_DISTANCE,
+    e_def = case.energy
+    nu_flavour = NEUTRINO_FOR[case.particle_type]
+
+    nu1 = _make_particle(
+        nu_flavour, float("nan"), nu_pos, direction, length=NU_DISTANCE
     )
-    t_cc = NU_DISTANCE / C_M_PER_NS
-    hadrons = _make_particle(
-        "Hadrons", Y_CC * case.energy, vertex, direction, time=t_cc
+    t_nc = NU_DISTANCE / C_M_PER_NS
+    hadrons_nc = _make_particle(
+        "Hadrons", Y_NC * e_def, nc_vertex, direction, time=t_nc
+    )
+    e2 = (1.0 - Y_NC) * e_def
+    nu2 = _make_particle(
+        nu_flavour,
+        e2,
+        nc_vertex,
+        direction,
+        time=t_nc,
+        length=NC_TO_CC_DISTANCE,
+    )
+    t_cc = t_nc + NC_TO_CC_DISTANCE / C_M_PER_NS
+    hadrons_cc = _make_particle(
+        "Hadrons", Y_CC * e2, cc_vertex, direction, time=t_cc
     )
     lepton = _make_particle(
-        case.particle_type,
-        (1.0 - Y_CC) * case.energy,
-        vertex,
-        direction,
-        time=t_cc,
+        case.particle_type, (1.0 - Y_CC) * e2, cc_vertex, direction, time=t_cc
     )
 
     tree = dataclasses.I3MCTree()
-    tree.add_primary(neutrino)
-    tree.append_child(neutrino, hadrons)
-    tree.append_child(neutrino, lepton)
+    tree.add_primary(nu1)
+    tree.append_child(nu1, hadrons_nc)
+    tree.append_child(nu1, nu2)
+    tree.append_child(nu2, hadrons_cc)
+    tree.append_child(nu2, lepton)
     return tree
 
 
@@ -300,12 +318,16 @@ def build_outside_nc_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
     return tree
 
 
-def build_far_outside_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
-    """CC event far enough out that nothing it makes reaches the hull.
+def build_coincident_background_event(
+    case: "EdgeCase",
+) -> "dataclasses.I3MCTree":
+    """Signal neutrino misses the array, plus a coincident background muon.
 
-    The lepton ranges out short of the array and the hadrons sit
-    outside, so the extractor records zero deposited energy and warns
-    rather than fails.
+    The neutrino's CC products (a low-energy muon and the hadronic recoil) all
+    stop short of the hull, so the signal deposits nothing. An independent pi+
+    decays to a muon that does cross the array, so the only charge in the
+    detector comes from the coincident background -- the case the extractor
+    represents as ``e_total == 0`` with ``daughters=True``.
     """
     direction = _normalise(case.direction)
     vertex = np.array(case.position, dtype=float)
@@ -334,6 +356,25 @@ def build_far_outside_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
     tree.add_primary(neutrino)
     tree.append_child(neutrino, hadrons)
     tree.append_child(neutrino, lepton)
+
+    # Coincident background: a downgoing pi+ through the centre decays to the
+    # muon that actually lights up the detector.
+    bg_dir = _normalise((0.0, 0.0, -1.0))
+    muon_pos = np.array([0.0, 0.0, DETECTOR_HALF_Z + 200.0])
+    pion_pos = muon_pos - bg_dir * COINCIDENT_BG_PION_UPSTREAM
+    pion = _make_particle(
+        "PiPlus",
+        COINCIDENT_BG_MUON_ENERGY,
+        pion_pos,
+        bg_dir,
+        length=COINCIDENT_BG_PION_UPSTREAM,
+        location_type="Anywhere",
+    )
+    muon = _make_particle(
+        "MuPlus", COINCIDENT_BG_MUON_ENERGY, muon_pos, bg_dir
+    )
+    tree.add_primary(pion)
+    tree.append_child(pion, muon)
     return tree
 
 
@@ -343,7 +384,9 @@ def build_corsika_bundle_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
     The extractor's ``is_corsika`` path treats the whole tree as background and
     sums the bundle from the unfiltered MMCTrackList. The bundle is illustrative
     -- multiplicity, energies and geometry are hand-chosen to exercise that path,
-    not sampled from a flux model (for realistic bundles, use MuonGun).
+    not sampled from a flux model (for realistic bundles, use MuonGun). The muons
+    are collinear with the shower axis and spread transversely around it, as a
+    real in-ice bundle is.
     """
     direction = _normalise(case.direction)
     vertex = np.array(case.position, dtype=float)
@@ -359,7 +402,8 @@ def build_corsika_bundle_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
     tree = dataclasses.I3MCTree()
     tree.add_primary(primary)
 
-    # Orthonormal vectors transverse to the shower axis, to tilt the fan.
+    # Orthonormal vectors transverse to the shower axis, to place the muons on a
+    # ring around it.
     ref = (
         np.array([1.0, 0.0, 0.0])
         if abs(direction[0]) < 0.9
@@ -370,18 +414,17 @@ def build_corsika_bundle_event(case: "EdgeCase") -> "dataclasses.I3MCTree":
     v = np.cross(direction, u)
 
     n = len(CORSIKA_BUNDLE_ENERGIES)
-    half_angle = np.radians(CORSIKA_BUNDLE_OPENING_DEG)
     for i, energy in enumerate(CORSIKA_BUNDLE_ENERGIES):
         if i == 0:
-            mu_dir = direction  # leading muon on the shower axis (bundle core)
+            offset = np.zeros(3)  # core muon on the shower axis
         else:
             phi = 2.0 * np.pi * (i - 1) / (n - 1)
-            mu_dir = direction * np.cos(half_angle) + (
+            offset = CORSIKA_BUNDLE_RADIUS * (
                 np.cos(phi) * u + np.sin(phi) * v
-            ) * np.sin(half_angle)
-            mu_dir = mu_dir / np.linalg.norm(mu_dir)
+            )
+        mu_pos = vertex + offset
         ptype = "MuMinus" if i % 2 == 0 else "MuPlus"
-        muon = _make_particle(ptype, energy, vertex, mu_dir)
+        muon = _make_particle(ptype, energy, mu_pos, direction)
         tree.append_child(primary, muon)
     return tree
 
@@ -429,11 +472,13 @@ EDGE_CASES: List[EdgeCase] = [
         name="nan_primary_energy",
         particle_type="MuMinus",
         energy=500.0,
-        position=(-200.0, 0.0, 0.0),
+        position=(0.0, 0.0, 0.0),
         direction=(1.0, 0.0, 0.0),
         builder=build_nan_primary_event,
-        comment="Primary NuMu has NaN energy; its CC daughters (hadrons + "
-        "muon) carry the real energy, exercising check_primary_energy.",
+        comment="In-ice primary NuMu has NaN energy; its neutrino daughter "
+        "carries the real energy, so check_primary_energy "
+        "(I3HighestEParticleExtractor) falls back from the NaN primary to that "
+        "daughter.",
     ),
     EdgeCase(
         name="non_top_level_in_ice_nu",
@@ -448,16 +493,16 @@ EDGE_CASES: List[EdgeCase] = [
         "in-ice neutrino is not at the top of the tree.",
     ),
     EdgeCase(
-        name="no_descendants_reach_hull",
+        name="coincident_background_muon",
         particle_type="MuMinus",
         energy=50.0,
         position=(-2000.0, 0.0, 0.0),
         direction=(1.0, 0.0, 0.0),
-        builder=build_far_outside_event,
-        expect_no_track=True,
-        comment="Low-energy CC 2 km out: the muon ranges out and the hadrons "
-        "sit far outside, so nothing the neutrino makes reaches the hull "
-        "(the muon is never tracked, so MMCTrackList is empty).",
+        builder=build_coincident_background_event,
+        comment="Signal NuMu 2 km out whose muon ranges out and hadrons sit "
+        "outside the array, plus a coincident pi+ -> muon that does cross it, "
+        "so the only detector light is background (e_total == 0 with "
+        "daughters=True).",
     ),
     EdgeCase(
         name="corsika_muon_bundle",
@@ -512,7 +557,6 @@ class SeedInjector(icetray.I3Module):
         frame["I3EventHeader"] = header
 
         frame["EdgeCaseName"] = dataclasses.I3String(case.name)
-        frame["ExpectNoTrack"] = icetray.I3Bool(case.expect_no_track)
         frame["TopPrimaryOutsideIce"] = icetray.I3Bool(
             case.top_primary_outside_ice
         )
@@ -604,33 +648,6 @@ class FrameValidator(icetray.I3Module):
 
         if len(tree) == 0:
             raise RuntimeError(f"{ctx}: '{self._mctree}' is empty")
-
-        expect_no_track = (
-            frame.Has("ExpectNoTrack") and frame["ExpectNoTrack"].value
-        )
-
-        # The one case where an empty MMCTrackList is intended (nothing is
-        # tracked). Still guard against a mis-tuned seed whose track reaches the
-        # array: vertex distance minus length is its closest approach to origin.
-        if expect_no_track:
-            harvested = MuonGun.Track.harvest(tree, mmc_list)
-            for track in harvested:
-                vertex_dist = np.linalg.norm(
-                    [track.pos.x, track.pos.y, track.pos.z]
-                )
-                if vertex_dist - track.length < DETECTOR_RADIUS:
-                    raise RuntimeError(
-                        f"{ctx}: a propagated {track.type} can reach the array "
-                        f"(vertex {vertex_dist:.0f} m out, length "
-                        f"{track.length:.0f} m) -- this case must keep every "
-                        "descendant outside the hull"
-                    )
-            print(
-                f"{ctx}: OK (no track reaches detector) -- "
-                f"MMCTrackList size {len(mmc_list)}, "
-                f"harvested {len(harvested)} -- {describe_topology(frame)}"
-            )
-            return
 
         if len(mmc_list) == 0:
             raise RuntimeError(
