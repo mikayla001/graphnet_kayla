@@ -1,0 +1,54 @@
+# configs/datasets/my_tau_nuebar_config.yml
+
+path: 
+  - /n/holylfs05/LABS/arguelles_delgado_lab/Everyone/mtate/data/Gdata/nuebar_out/sqlite/merged/merged.db
+  - /n/holylfs05/LABS/arguelles_delgado_lab/Everyone/mtate/data/Gdata/tau_out/sqlite/merged/merged.db
+
+
+graph_definition:
+  arguments:
+    columns: [0, 1, 2]
+    detector:
+      arguments: {}
+      class_name: Prometheus
+    dtype: torch.float32
+    nb_nearest_neighbours: 8
+    node_definition:
+      arguments: {}
+      class_name: NodesAsPulses
+    input_feature_names: [sensor_pos_x, sensor_pos_y, sensor_pos_z, t]
+  class_name: KNNGraph
+
+pulsemaps:
+  - photons  # <- CHANGED from 'total' to 'photons'
+
+features:
+  - sensor_pos_x
+  - sensor_pos_y
+  - sensor_pos_z
+  - t
+
+truth:
+  - initial_state_energy  # <- CHANGED column names
+  - initial_state_type
+  - initial_state_zenith
+  - initial_state_azimuth
+  - initial_state_x
+  - initial_state_y
+  - initial_state_z
+  - interaction
+
+index_column: event_no
+truth_table: mc_truth
+seed: 42
+
+selection:
+  # NuEBar (initial_state_type: -12)
+  train_nuebar: "event_no % 5 > 1 & initial_state_type == -12"
+  validation_nuebar: "event_no % 5 == 1 & initial_state_type == -12"
+  test_nuebar: "event_no % 5 == 0 & initial_state_type == -12"
+  
+  # TauMinus (initial_state_type: 15)
+  train_tau: "event_no % 5 > 1 & initial_state_type == 15"
+  validation_tau: "event_no % 5 == 1 & initial_state_type == 15"
+  test_tau: "event_no % 5 == 0 & initial_state_type == 15"
