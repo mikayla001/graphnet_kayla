@@ -1,3 +1,4 @@
+#       configs/models/dynedge_nuebar_tau_classificatiion.yml
 arguments:
   backbone:
     ModelConfig:
@@ -19,7 +20,7 @@ arguments:
           ModelConfig:
             arguments: {}
             class_name: Prometheus
-        dtype: null
+        dtype: torch.float32
         nb_nearest_neighbours: 8
         node_definition:
           ModelConfig:
@@ -27,28 +28,25 @@ arguments:
             class_name: NodesAsPulses
         input_feature_names: [sensor_pos_x, sensor_pos_y, sensor_pos_z, t]
       class_name: KNNGraph
-  optimizer_class: '!class torch.optim.adam Adam'
+  optimizer_class: '!class torch.optim Adam'
   optimizer_kwargs: {eps: 0.001, lr: 0.001}
-  scheduler_class: '!class graphnet.training.callbacks PiecewiseLinearLR'
-  scheduler_config: {interval: step}
-  scheduler_kwargs:
-    factors: [0.01, 1, 0.01]
-    milestones: [0, 20.0, 80]
+  scheduler_class: null
+  scheduler_config: null
+  scheduler_kwargs: null
   tasks:
-  - ModelConfig:
-      arguments:
-        nb_outputs: 2
-        prediction_labels: ['nuebar', 'tau']
-        hidden_size: 128
-        loss_function:
-          ModelConfig:
-            arguments: {options: {-12: 0, 12: 0, 15: 1, -15: 1}}
-            class_name: CrossEntropyLoss
-        loss_weight: null
-        target_labels: initial_state_type
-        transform_inference: '!lambda x: torch.nn.functional.softmax(x, dim=-1)'
-        transform_prediction_and_target: null
-        transform_support: null
-        transform_target: null
-      class_name: MulticlassClassificationTask
+    - ModelConfig:
+        arguments:
+          hidden_size: 128
+          loss_function:
+            ModelConfig:
+              arguments: {}
+              class_name: BinaryCrossEntropyLoss
+          loss_weight: null
+          prediction_labels: ['is_tau_pred']
+          target_labels: is_tau
+          transform_inference: null
+          transform_prediction_and_target: null
+          transform_support: null
+          transform_target: null
+        class_name: BinaryClassificationTask
 class_name: StandardModel
