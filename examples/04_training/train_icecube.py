@@ -1,22 +1,11 @@
-"""Multi-class classification using DynEdge from pre-defined config files.
-
-Modified from GraphNeT's 04_train_multiclassifier_from_configs.py to also
-log a wandb.Table of test-set predictions (and a confusion matrix) after
-training completes.
-"""
+"""Train DynEdge model for NuEBar/Tau classification with W&B logging."""
 
 import os
 from typing import List, Optional, Dict, Any
 
-import wandb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 from graphnet.data.dataset.dataset import EnsembleDataset
-from graphnet.constants import (
-    EXAMPLE_OUTPUT_DIR,
-    DATASETS_CONFIG_DIR,
-    MODEL_CONFIG_DIR,
-)
 from graphnet.data.dataloader import DataLoader
 from graphnet.data.dataset import Dataset
 from graphnet.models import StandardModel
@@ -35,6 +24,185 @@ def main(
     gpus: Optional[List[int]],
     max_epochs: int,
     early_stopping_patience: int,
+    batch_size: int,
+    num_workers: int,
+    suffix: Optional[str] = None,
+    wandb: bool = False,
+    wandb_project: str = "nuebar-tau-classification",
+    wandb_entity: Optional[str] = None,
+) -> None:
+    """Train model from config files with W&B logging."""
+    logger = Logger()
+
+    # Initialize Weights & Biases logger
+    wandb_logger = None
+    if wandb:
+        wandb_dir = "./wandb/"
+        os.makedirs(wandb_dir, exist_ok=True)
+        wandb_logger = WandbLogger(
+            project=wandb_project,
+            entity=wandb_entity,
+            save_dir=wandb_dir,
+            log_model=True,  # Save model checkpoints to W&B
+            name=f"nuebar_tau_{suffix}" if suffix else "nuebar_tau_classification",
+        )
+
+    # Load configs
+    model_config = ModelConfig.load(model_config_path)
+    dataset_config = DatasetConfig.load(dataset_config_path)
+    
+    # Build model from config
+    model: StandardModel = StandardModel.from_config(model_config, trust=True)
+    
+    # Configure training
+    config = TrainingConfig(
+        target=[
+            target for task in model._tasks for target in task._target_labels
+        ],
+        early_stopping_patience=early_stopping_patience,
+        fit={
+            "gpus": gpus,
+            "max_epochs": max_epochs,
+        },
+        dataloader={"batch_size": batch_size, "num_workers": num_workers},
+    )
+    
+    # Create datasets
+    datasets: Dict[str, Any] = Dataset.from_config(dataset_config)
+    
+    # Construct ensemble datasets for multiple selections (train_nuebar, train_tau, etc.)
+    train_dataset = EnsembleDataset(
+        [datasets[key] for key in datasets if key.startswith("train")]
+    )
+    valid_dataset = EnsembleDataset(
+        [datasets[key] for key in datasets if key.startswith("validation")]
+    )
+    test_dataset = EnsembleDataset(
+        [datasets[key] for key in datasets if key.startswith("test")]
+    )
+    
+    # Create dataloaders
+    train_dataloader = DataLoader(
+        train_dataset, shuffle=True, **config.dataloader
+    )
+    valid_dataloader = DataLoader(
+        valid_dataset, shuffle=False, **config.dataloader
+    )
+    test_dataloader = DataLoader(
+        test_dataset, shuffle=False, **config.dataloader
+    )
+    
+    # Log configurations to W&B
+    # Only log on rank-zero process for multi-GPU training
+    if wandb and rank_zero_only.rank == 0:
+        wandb_logger.experiment.config.update(config.as_dict())
+        wandb_logger.experiment.config.update(model_config.as_dict())
+        wandb_logger.experiment.config.update(dataset_config.as_dict())
+        logger.info("W&B logging initialized")
+    
+    logger.info(f"Training on targets: {config.target}")
+    logger.info(f"Train samples: {len(train_dataset)}, "
+                f"Validation samples: {len(valid_dataset)}, "
+                f"Test samples: {len(test_dataset)}")
+    
+    # Train model
+    model.fit(
+        train_dataloader,
+        valid_dataloader,
+        early_stopping_patience=config.early_stopping_patience,
+        logger=wandb_logger,
+        **config.fit,
+    )
+    
+    # Save results locally
+    db_name = dataset_config.path[0].split("/")[-1].split(".")[0]
+    run_name = f"nuebar_tau_{suffix}" if suffix else "nuebar_tau_classification"
+    output_dir = f"./output/{db_name}/{run_name}"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    logger.info(f"Saving results to {output_dir}")
+    model.save_state_dict(f"{output_dir}/state_dict.pth")
+    
+    # Get predictions and log to W&B
+    if isinstance(config.target, str):
+        additional_attributes = [config.target]
+    else:
+        additional_attributes = config.target
+    
+    logger.info(f"Getting predictions for: {model.prediction_labels}")
+    results = model.predict_as_dataframe(
+        test_dataloader,
+        additional_attributes=additional_attributes + ["event_no"],
+        gpus=config.fit["gpus"],
+    )
+    results.to_csv(f"{output_dir}/results.csv")
+    
+    # Log results to W&B
+    if wandb and rank_zero_only.rank == 0:
+        # Log results dataframe as table
+        wandb_logger.experiment.log({
+            "results_table": wandb.Table(dataframe=results)
+        })
+        # Log artifact (results CSV)
+        wandb_logger.experiment.log_artifact(f"{output_dir}/results.csv")
+        logger.info("Results logged to W&B")
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Train NuEBar/Tau Classifier with W&B logging")
+    
+    parser.with_standard_arguments(
+        "dataset-config",
+        "model-config",
+        "gpus",
+        ("max-epochs", 50),
+        "early-stopping-patience",
+        ("batch-size", 32),
+        ("num-workers", 4),
+    )
+    
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        help="Suffix for output directory and W&B run name",
+        default=None,
+    )
+    
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable Weights & Biases logging",
+    )
+    
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        help="W&B project name",
+        default="nuebar-tau-classification",
+    )
+    
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        help="W&B entity (username or team name)",
+        default=None,
+    )
+    
+    args, _ = parser.parse_known_args()
+    
+    main(
+        args.dataset_config,
+        args.model_config,
+        args.gpus,
+        args.max_epochs,
+        args.early_stopping_patience,
+        args.batch_size,
+        args.num_workers,
+        args.suffix,
+        args.wandb,
+        args.wandb_project,
+        args.wandb_entity,
+    )    early_stopping_patience: int,
     batch_size: int,
     num_workers: int,
     suffix: Optional[str] = None,
